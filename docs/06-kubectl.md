@@ -2,48 +2,50 @@
 
 ## Download and Install kubectl
 
-```
-wget https://github.com/kubernetes/kubernetes/releases/download/v1.3.0/kubernetes.tar.gz
-```
-
-```
-tar -xvf kubernetes.tar.gz
-```
-
 ### OS X
 
 ```
-sudo cp kubernetes/platforms/darwin/amd64/kubectl /usr/local/bin
+wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/darwin/amd64/kubectl
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin
 ```
 
 ### Linux
 
 ```
-sudo cp kubernetes/platforms/linux/amd64/kubectl /usr/local/bin
+wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubectl
+chmod +x kubectl
+sudo mv kubectl /usr/local/bin
 ```
 
 ## Configure Kubectl
 
-In this section you will configure the kubectl client to point to the [Kubernetes API Server Frontend Load Balancer](docs/kubernetes-controller.md#setup-kubernetes-api-server-frontend-load-balancer).
+In this section you will configure the kubectl client to point to the [Kubernetes API Server Frontend Load Balancer](04-kubernetes-controller.md#setup-kubernetes-api-server-frontend-load-balancer).
 
-Recall the Public IP address we allocated for the frontend load balancer:
+### GCE
 
 ```
-gcloud compute addresses list
+KUBERNETES_PUBLIC_ADDRESS=$(gcloud compute addresses describe kubernetes \
+  --format 'value(address)')
 ```
+
+### AWS
+
 ```
-NAME        REGION       ADDRESS          STATUS
-kubernetes  us-central1  104.197.132.159  IN_USE
+KUBERNETES_PUBLIC_ADDRESS=$(aws elb describe-load-balancers \
+  --load-balancer-name kubernetes | \
+  jq -r '.LoadBalancerDescriptions[].DNSName')
 ```
+---
 
 Recall the token we setup for the admin user:
 
 ```
-# /var/run/kubernetes/token.csv on the controller nodes
+# /var/lib/kubernetes/token.csv on the controller nodes
 chAng3m3,admin,admin
 ```
 
-Also be sure to locate the CA certificate [created earlier](docs/certificate-authority.md). Since we are using self-signed TLS certs we need to trust the CA certificate so we can verify the remote API Servers.
+Also be sure to locate the CA certificate [created earlier](02-certificate-authority.md). Since we are using self-signed TLS certs we need to trust the CA certificate so we can verify the remote API Servers.
 
 ### Build up the kubeconfig entry
 
@@ -51,9 +53,9 @@ The following commands will build up the default kubeconfig file used by kubectl
 
 ```
 kubectl config set-cluster kubernetes-the-hard-way \
-  --embed-certs=true \
   --certificate-authority=ca.pem \
-  --server=https://104.197.132.159:6443
+  --embed-certs=true \
+  --server=https://${KUBERNETES_PUBLIC_ADDRESS}:6443
 ```
 
 ```
@@ -90,7 +92,7 @@ kubectl get nodes
 ```
 ```
 NAME      STATUS    AGE
-worker0   Ready     10m
-worker1   Ready     12m
-worker2   Ready     14m
+worker0   Ready     7m
+worker1   Ready     5m
+worker2   Ready     2m
 ```

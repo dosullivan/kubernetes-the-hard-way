@@ -1,13 +1,10 @@
 # Bootstrapping Kubernetes Workers
 
-In this lab you will bootstrap a 3 Kubernetes worker nodes. The following virtual machines will be used:
+In this lab you will bootstrap 3 Kubernetes worker nodes. The following virtual machines will be used:
 
-```
-NAME         ZONE           MACHINE_TYPE   INTERNAL_IP  STATUS
-worker0      us-central1-f  n1-standard-1  10.240.0.30  RUNNING
-worker1      us-central1-f  n1-standard-1  10.240.0.31  RUNNING
-worker2      us-central1-f  n1-standard-1  10.240.0.32  RUNNING
-```
+* worker0
+* worker1
+* worker2
 
 ## Why
 
@@ -21,42 +18,32 @@ Some people would like to run workers and cluster services anywhere in the clust
 
 ## Provision the Kubernetes Worker Nodes
 
-The following instructions can be ran on each worker node without modification. Lets start with `worker0`. Don't forget to repeat these steps for `worker1` and `worker2`.
-
-### worker0
-
-```
-gcloud compute ssh worker0
-```
+Run the following commands on `worker0`, `worker1`, `worker2`:
 
 #### Move the TLS certificates in place
 
 ```
-sudo mkdir -p /var/run/kubernetes
+sudo mkdir -p /var/lib/kubernetes
 ```
 
 ```
-sudo mv ca.pem kubernetes-key.pem kubernetes.pem /var/run/kubernetes/
+sudo cp ca.pem kubernetes-key.pem kubernetes.pem /var/lib/kubernetes/
 ```
 
 #### Docker
 
-Kubernetes should be compatible with the Docker 1.9.x - 1.11.x:
+Kubernetes should be compatible with the Docker 1.9.x - 1.12.x:
 
 ```
-wget https://get.docker.com/builds/Linux/x86_64/docker-1.11.2.tgz
-```
-
-```
-tar -xvf docker-1.11.2.tgz
+wget https://get.docker.com/builds/Linux/x86_64/docker-1.12.1.tgz
 ```
 
 ```
-sudo cp docker/docker /usr/bin/
-sudo cp docker/docker-containerd /usr/bin/
-sudo cp docker/docker-containerd-ctr /usr/bin/
-sudo cp docker/docker-containerd-shim /usr/bin/
-sudo cp docker/docker-runc /usr/bin/
+tar -xvf docker-1.12.1.tgz
+```
+
+```
+sudo cp docker/docker* /usr/bin/
 ```
 
 Create the Docker systemd unit file:
@@ -91,23 +78,6 @@ sudo systemctl start docker
 sudo docker version
 ```
 
-```
-Client:
- Version:      1.11.2
- API version:  1.23
- Go version:   go1.5.4
- Git commit:   b9f10c9
- Built:        Wed Jun  1 21:20:08 2016
- OS/Arch:      linux/amd64
-
-Server:
- Version:      1.11.2
- API version:  1.23
- Go version:   go1.5.4
- Git commit:   b9f10c9
- Built:        Wed Jun  1 21:20:08 2016
- OS/Arch:      linux/amd64
-```
 
 #### kubelet
 
@@ -120,32 +90,32 @@ sudo mkdir -p /opt/cni
 ```
 
 ```
-wget https://storage.googleapis.com/kubernetes-release/network-plugins/cni-c864f0e1ea73719b8f4582402b0847064f9883b0.tar.gz
+wget https://storage.googleapis.com/kubernetes-release/network-plugins/cni-07a8a28637e97b22eb8dfe710eeae1344f69d16e.tar.gz
 ```
 
 ```
-sudo tar -xzf cni-c864f0e1ea73719b8f4582402b0847064f9883b0.tar.gz -C /opt/cni
+sudo tar -xvf cni-07a8a28637e97b22eb8dfe710eeae1344f69d16e.tar.gz -C /opt/cni
 ```
 
 
 Download and install the Kubernetes worker binaries:
 
 ```
-wget https://github.com/kubernetes/kubernetes/releases/download/v1.3.0/kubernetes.tar.gz
+wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubectl
+```
+```
+wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kube-proxy
+```
+```
+wget https://storage.googleapis.com/kubernetes-release/release/v1.4.0/bin/linux/amd64/kubelet
 ```
 
 ```
-tar -xvf kubernetes.tar.gz
+chmod +x kubectl kube-proxy kubelet
 ```
 
 ```
-tar -xvf kubernetes/server/kubernetes-server-linux-amd64.tar.gz
-```
-
-```
-sudo cp kubernetes/server/bin/kubectl /usr/bin/
-sudo cp kubernetes/server/bin/kube-proxy /usr/bin/
-sudo cp kubernetes/server/bin/kubelet /usr/bin/
+sudo mv kubectl kube-proxy kubelet /usr/bin/
 ```
 
 ```
@@ -157,8 +127,8 @@ sudo sh -c 'echo "apiVersion: v1
 kind: Config
 clusters:
 - cluster:
-    certificate-authority: /var/run/kubernetes/ca.pem
-    server: https://10.240.0.20:6443
+    certificate-authority: /var/lib/kubernetes/ca.pem
+    server: https://10.240.0.10:6443
   name: kubernetes
 contexts:
 - context:
@@ -184,7 +154,7 @@ Requires=docker.service
 [Service]
 ExecStart=/usr/bin/kubelet \
   --allow-privileged=true \
-  --api-servers=https://10.240.0.20:6443,https://10.240.0.21:6443,https://10.240.0.22:6443 \
+  --api-servers=https://10.240.0.10:6443,https://10.240.0.11:6443,https://10.240.0.12:6443 \
   --cloud-provider= \
   --cluster-dns=10.32.0.10 \
   --cluster-domain=cluster.local \
@@ -195,8 +165,8 @@ ExecStart=/usr/bin/kubelet \
   --kubeconfig=/var/lib/kubelet/kubeconfig \
   --reconcile-cidr=true \
   --serialize-image-pulls=false \
-  --tls-cert-file=/var/run/kubernetes/kubernetes.pem \
-  --tls-private-key-file=/var/run/kubernetes/kubernetes-key.pem \
+  --tls-cert-file=/var/lib/kubernetes/kubernetes.pem \
+  --tls-private-key-file=/var/lib/kubernetes/kubernetes-key.pem \
   --v=2
   
 Restart=on-failure
@@ -213,7 +183,7 @@ sudo systemctl start kubelet
 ```
 
 ```
-sudo systemctl status kubelet
+sudo systemctl status kubelet --no-pager
 ```
 
 
@@ -227,7 +197,7 @@ Documentation=https://github.com/GoogleCloudPlatform/kubernetes
 
 [Service]
 ExecStart=/usr/bin/kube-proxy \
-  --master=https://10.240.0.20:6443 \
+  --master=https://10.240.0.10:6443 \
   --kubeconfig=/var/lib/kubelet/kubeconfig \
   --proxy-mode=iptables \
   --v=2
@@ -246,5 +216,7 @@ sudo systemctl start kube-proxy
 ```
 
 ```
-sudo systemctl status kube-proxy
+sudo systemctl status kube-proxy --no-pager
 ```
+
+> Remember to run these steps on `worker0`, `worker1`, and `worker2`

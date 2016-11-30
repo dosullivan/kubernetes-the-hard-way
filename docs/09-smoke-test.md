@@ -32,47 +32,59 @@ service "nginx" exposed
 
 > Note that --type=LoadBalancer will not work because we did not configure a cloud provider when bootstrapping this cluster.
 
+Grab the `NodePort` that was setup for the nginx service:
 
 ```
-kubectl describe svc nginx
+NODE_PORT=$(kubectl get svc nginx --output=jsonpath='{range .spec.ports[0]}{.nodePort}')
 ```
+
+### Create the Node Port Firewall Rule
+
+#### GCP
+
 ```
-Name:			  nginx
-Namespace:		  default
-Labels:			  run=nginx
-Selector:		  run=nginx
-Type:			  NodePort
-IP:			      10.32.0.199
-Port:			  <unset>	80/TCP
-NodePort:		  <unset>	32345/TCP
-Endpoints:		  10.200.0.2:80,10.200.1.2:80,10.200.2.2:80
-Session Affinity: None
-No events.
+gcloud compute firewall-rules create kubernetes-nginx-service \
+  --allow=tcp:${NODE_PORT} \
+  --network kubernetes
+```
+
+Grab the `EXTERNAL_IP` for one of the worker nodes:
+
+```
+NODE_PUBLIC_IP=$(gcloud compute instances describe worker0 \
+  --format 'value(networkInterfaces[0].accessConfigs[0].natIP)')
+```
+
+#### AWS
+
+```
+SECURITY_GROUP_ID=$(aws ec2 describe-security-groups \
+  --filters "Name=tag:Name,Values=kubernetes" | \
+  jq -r '.SecurityGroups[].GroupId')
 ```
 
 ```
-gcloud compute firewall-rules create nginx-service --allow=tcp:32345
+aws ec2 authorize-security-group-ingress \
+  --group-id ${SECURITY_GROUP_ID} \
+  --protocol tcp \
+  --port ${NODE_PORT} \
+  --cidr 0.0.0.0/0
 ```
 
-```
-gcloud compute instances list
-```
-
-````
-NAME         ZONE           MACHINE_TYPE   PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP      STATUS
-controller0  us-central1-f  n1-standard-1               10.240.0.20  146.148.34.151   RUNNING
-controller1  us-central1-f  n1-standard-1               10.240.0.21  104.197.49.230   RUNNING
-controller2  us-central1-f  n1-standard-1               10.240.0.22  130.211.123.47   RUNNING
-etcd0        us-central1-f  n1-standard-1               10.240.0.10  104.197.163.174  RUNNING
-etcd1        us-central1-f  n1-standard-1               10.240.0.11  146.148.43.6     RUNNING
-etcd2        us-central1-f  n1-standard-1               10.240.0.12  162.222.179.131  RUNNING
-worker0      us-central1-f  n1-standard-1               10.240.0.30  104.155.181.141  RUNNING
-worker1      us-central1-f  n1-standard-1               10.240.0.31  104.197.163.37   RUNNING
-worker2      us-central1-f  n1-standard-1               10.240.0.32  104.154.41.9     RUNNING
-````
+Grab the `EXTERNAL_IP` for one of the worker nodes:
 
 ```
-curl http://104.155.181.141:32345
+NODE_PUBLIC_IP=$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=worker0" | \
+  jq -j '.Reservations[].Instances[].PublicIpAddress')
+```
+
+---
+
+Test the nginx service using cURL:
+
+```
+curl http://${NODE_PUBLIC_IP}:${NODE_PORT}
 ```
 
 ```
